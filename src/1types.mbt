@@ -1,19 +1,21 @@
 ///|
 /// Term ↑
 pub enum ExpI {
-  Ann(ExpC, Type)
+  Ann(ExpC, ExpC)
+  Star
+  Pi(ExpC, ExpC)
   /// 从里往外的第 i 个变量
   Bound(Int)
   Free(Name)
   App(ExpI, ExpC)
-} derive(Show)
+} derive(Show, Eq)
 
 ///|
 /// Term ↓
 pub enum ExpC {
   Inf(ExpI)
   Lam(ExpC)
-} derive(Show)
+} derive(Show, Eq)
 
 ///|
 pub enum Name {
@@ -25,14 +27,13 @@ pub enum Name {
 } derive(Eq, Show)
 
 ///|
-pub enum Type {
-  TFree(Name)
-  Fun(Type, Type)
-} derive(Eq, Show)
+type Type = Value
 
 ///|
 pub enum Value {
   VLam((Value) -> Value)
+  VStar
+  VPi(Value, (Value) -> Value)
   VNeutral(Neutral)
 }
 
@@ -40,7 +41,7 @@ pub enum Value {
 pub enum Neutral {
   NFree(Name)
   NApp(Neutral, Value)
-}
+} derive(Show)
 
 ///|
 using @list {type List}

@@ -1,16 +1,5 @@
 ///|
-pub(all) enum Kind {
-  Star
-}
-
-///|
-pub(all) enum Info {
-  HasKind(Kind)
-  HasType(Type)
-}
-
-///|
-pub type Context = List[(Name, Info)]
+pub type Context = List[(Name, Type)]
 
 ///|
 pub(all) suberror CheckError {

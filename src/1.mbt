@@ -6,6 +6,12 @@ fn Value::free(name : Name) -> Value {
 ///|
 pub fn ExpI::eval(self : ExpI, env : Env) -> Value {
   match self {
+    Star => VStar
+    Pi(e_par_ty, e_ret_ty) =>
+      VPi( //
+        e_par_ty.eval(env),
+        arg => e_ret_ty.eval(env.add(arg)),
+      )
     Ann(e, _) => e.eval(env)
     Free(name) => Value::free(name)
     Bound(i) => env.unsafe_nth(i)
@@ -22,6 +28,7 @@ fn Value::app(self : Value, v : Value) -> Value {
   match self {
     VLam(f) => f(v)
     VNeutral(n) => VNeutral(NApp(n, v))
+    _ => panic() // TODO: P18 缺少分支
   }
 }
 
