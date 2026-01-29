@@ -20,6 +20,23 @@ pub fn ExpI::eval(self : ExpI, env : Env) -> Value {
         e_fun.eval(env),
         e_arg.eval(env),
       )
+    Nat => VNat
+    Zero => VZero
+    Succ(k) => VSucc(k.eval(env))
+    NatElim(e_m, e_onz, e_ons, e_k) => {
+      let onz = e_onz.eval(env)
+      let ons = e_ons.eval(env)
+      fn rec(k) {
+        match k {
+          VZero => onz
+          VSucc(l) => ons.app(l).app(rec(l))
+          VNeutral(n_k) => VNeutral(NNatElim(e_m.eval(env), onz, ons, n_k))
+          _ => panic()
+        }
+      }
+
+      rec(e_k.eval(env))
+    }
   }
 }
 

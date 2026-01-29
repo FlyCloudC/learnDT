@@ -34,6 +34,27 @@ fn ExpI::infer_type(
     Bound(_) => panic()
     // Because we are turning a bound variable into a free variable,
     // the type checker will never encounter a bound variable.
+    Nat => VStar
+    Zero => VNat
+    Succ(e_l) => {
+      e_l.check_type(i, ctx, VNat)
+      VNat
+    }
+    NatElim(e_m, e_onz, e_ons, e_k) => {
+      e_m.check_type(i, ctx, VPi(VNat, _ => VStar))
+      let m = e_m.eval(Env::empty())
+      e_onz.check_type(i, ctx, m.app(VZero))
+      e_ons.check_type(
+        i,
+        ctx,
+        VNat //
+        |> VPi(l => m.app(l) //
+          |> VPi(_ => m.app(VSucc(l)))),
+      )
+      e_k.check_type(i, ctx, VNat)
+      let k = e_k.eval(Env::empty())
+      m.app(k)
+    }
   }
 }
 
@@ -94,6 +115,16 @@ fn ExpI::subst(e_old : ExpI, i : Int, e_new : ExpI) -> ExpI {
         e_fun.subst(i, e_new),
         e_arg.subst(i, e_new),
       )
+    Nat => e_old
+    Zero => e_old
+    Succ(e_l) => Succ(e_l.subst(i, e_new))
+    NatElim(e_m, e_onz, e_ons, e_k) =>
+      NatElim(
+        e_m.subst(i, e_new),
+        e_onz.subst(i, e_new),
+        e_ons.subst(i, e_new),
+        e_k.subst(i, e_new),
+      )
   }
 }
 
@@ -126,6 +157,9 @@ fn Value::quote(self : Value, i : Int) -> ExpC {
         ),
       )
     VNeutral(n) => Inf(n.quote(i))
+    VNat => Inf(Nat)
+    VZero => Inf(Zero)
+    VSucc(l) => Inf(Succ(l.quote(i)))
   }
 }
 
@@ -142,6 +176,13 @@ fn Neutral::quote(self : Neutral, i : Int) -> ExpI {
     NFree(Quote(k)) => Bound(i - k - 1)
     NFree(name) => Free(name)
     NApp(n_fun, arg) => App(n_fun.quote(i), arg.quote(i))
+    NNatElim(m, onz, ons, n_k) =>
+      NatElim( //
+        m.quote(i),
+        onz.quote(i),
+        ons.quote(i),
+        Inf(n_k.quote(i)),
+      )
   }
 }
 
@@ -161,6 +202,9 @@ pub impl Show for Value with output(self, logger) {
       ..write_string(", _ => ")
       ..write_object(ret_ty(Value::free(Global("_"))))
       ..write_char(')')
+    VNat => logger.write_string("VNat")
+    VZero => logger.write_string("VZero")
+    VSucc(l) => logger..write_string("VSucc(")..write_object(l)..write_char(')')
   }
 }
 
@@ -220,4 +264,45 @@ test "example p12" {
       #|VPi(VNeutral(NFree(Global("b"))), _ => VNeutral(NFree(Global("b"))))
     ),
   )
+}
+
+///|
+test "example p24:plus" {
+  let pi = (x, y) => Inf(Pi(x, y))
+  let nat = Inf(Nat)
+  // -------------------------------------
+  let e_m = Lam(pi(nat, nat)) // _ => (Nat -> Nat)
+  let e_onz = Lam(Inf(Bound(0))) // n => n
+  let e_ons = Lam( // k =>
+    Lam( // rec =>
+      Lam( // n =>
+        Inf( // Succ(rec(n))
+          Succ(Inf(App(Bound(1), Inf(Bound(0))))),
+        ),
+      ),
+    ),
+  )
+  let e_plus = Ann(
+    Lam(Inf(NatElim(e_m, e_onz, e_ons, Inf(Bound(0))))),
+    pi(nat, pi(nat, nat)),
+  )
+  // -------------------------------------
+  let ty_plus = e_plus.infer_type(0, Context::empty())
+  inspect(ty_plus, content="VPi(VNat, _ => VPi(VNat, _ => VNat))")
+  // -------------------------------------
+  let int_to_e_nat = x => loop (x, Zero) {
+    (0, e) => e
+    (x, e) => continue (x - 1, Succ(Inf(e)))
+  }
+  let nat_to_int = v => loop (v, 0) {
+    (VZero, x) => x.to_string()
+    (VNeutral(n), x) => "\{n} + \{x}"
+    (VSucc(l), x) => continue (l, x + 1)
+    _ => panic()
+  }
+  let n_40 = int_to_e_nat(40)
+  let n_2 = int_to_e_nat(2)
+  let app = (x, y) => App(x, Inf(y))
+  let e_plus_40_2 = e_plus |> app(n_40) |> app(n_2)
+  inspect(e_plus_40_2.eval(Env::empty()) |> nat_to_int, content="42")
 }

@@ -8,6 +8,10 @@ pub enum ExpI {
   Bound(Int)
   Free(Name)
   App(ExpI, ExpC)
+  Nat
+  Zero
+  Succ(ExpC)
+  NatElim(ExpC, ExpC, ExpC, ExpC)
 } derive(Show, Eq)
 
 ///|
@@ -35,12 +39,16 @@ pub enum Value {
   VStar
   VPi(Value, (Value) -> Value)
   VNeutral(Neutral)
+  VNat
+  VZero
+  VSucc(Value)
 }
 
 ///|
 pub enum Neutral {
   NFree(Name)
   NApp(Neutral, Value)
+  NNatElim(Value, Value, Value, Neutral)
 } derive(Show)
 
 ///|
