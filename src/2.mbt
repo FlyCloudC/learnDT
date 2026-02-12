@@ -55,6 +55,57 @@ fn ExpI::infer_type(
       let k = e_k.eval(Env::empty())
       m.app(k)
     }
+    Vec(e_ty, e_len) => {
+      e_ty.check_type(i, ctx, VStar)
+      e_len.check_type(i, ctx, VNat)
+      VStar
+    }
+    Nil(e_ty) => {
+      e_ty.check_type(i, ctx, VStar)
+      VVec(e_ty.eval(Env::empty()), VZero)
+    }
+    Cons(e_ty, e_len, e_x, e_xs) => {
+      e_ty.check_type(i, ctx, VStar)
+      let ty = e_ty.eval(Env::empty())
+      e_len.check_type(i, ctx, VNat)
+      let len = e_len.eval(Env::empty())
+      e_x.check_type(i, ctx, ty)
+      e_xs.check_type(i, ctx, VVec(ty, len))
+      VVec(ty, VSucc(len))
+    }
+    VecElim(e_ty, e_m, e_onn, e_onc, e_len, e_xs) => {
+      e_ty.check_type(i, ctx, VStar)
+      let ty = e_ty.eval(Env::empty())
+      e_m.check_type(
+        i,
+        ctx,
+        VNat |> VPi(len => VVec(ty, len) |> VPi(_ => VStar)),
+      )
+      let m = e_m.eval(Env::empty())
+      e_onn.check_type(i, ctx, m.app(VZero).app(VNil(ty)))
+      e_onc.check_type(
+        i,
+        ctx,
+        VNat
+        |> VPi(len => {
+          ty
+          |> VPi(x => {
+            VVec(ty, len)
+            |> VPi(xs => {
+              VPi( //
+                m.app(len).app(xs),
+                _ => m.app(VSucc(len)).app(VCons(ty, len, x, xs)),
+              )
+            })
+          })
+        }),
+      )
+      e_len.check_type(i, ctx, VNat)
+      let len = e_len.eval(Env::empty())
+      e_xs.check_type(i, ctx, VVec(ty, len))
+      let xs = e_xs.eval(Env::empty())
+      m.app(len).app(xs)
+    }
   }
 }
 
@@ -125,6 +176,24 @@ fn ExpI::subst(e_old : ExpI, i : Int, e_new : ExpI) -> ExpI {
         e_ons.subst(i, e_new),
         e_k.subst(i, e_new),
       )
+    Vec(e_ty, e_len) => Vec(e_ty.subst(i, e_new), e_len.subst(i, e_new))
+    Nil(e_ty) => Nil(e_ty.subst(i, e_new))
+    Cons(e_ty, e_len, e_x, e_xs) =>
+      Cons(
+        e_ty.subst(i, e_new),
+        e_len.subst(i, e_new),
+        e_x.subst(i, e_new),
+        e_xs.subst(i, e_new),
+      )
+    VecElim(e_ty, e_m, e_onn, e_onc, e_len, e_xs) =>
+      VecElim(
+        e_ty.subst(i, e_new),
+        e_m.subst(i, e_new),
+        e_onn.subst(i, e_new),
+        e_onc.subst(i, e_new),
+        e_len.subst(i, e_new),
+        e_xs.subst(i, e_new),
+      )
   }
 }
 
@@ -160,6 +229,10 @@ fn Value::quote(self : Value, i : Int) -> ExpC {
     VNat => Inf(Nat)
     VZero => Inf(Zero)
     VSucc(l) => Inf(Succ(l.quote(i)))
+    VVec(ty, len) => Inf(Vec(ty.quote(i), len.quote(i)))
+    VNil(ty) => Inf(Nil(ty.quote(i)))
+    VCons(ty, len, x, xs) =>
+      Inf(Cons(ty.quote(i), len.quote(i), x.quote(i), xs.quote(i)))
   }
 }
 
@@ -183,6 +256,15 @@ fn Neutral::quote(self : Neutral, i : Int) -> ExpI {
         ons.quote(i),
         Inf(n_k.quote(i)),
       )
+    NVecElim(ty, m, onn, onc, len, n_xs) =>
+      VecElim(
+        ty.quote(i),
+        m.quote(i),
+        onn.quote(i),
+        onc.quote(i),
+        len.quote(i),
+        Inf(n_xs.quote(i)),
+      )
   }
 }
 
@@ -205,6 +287,25 @@ pub impl Show for Value with output(self, logger) {
     VNat => logger.write_string("VNat")
     VZero => logger.write_string("VZero")
     VSucc(l) => logger..write_string("VSucc(")..write_object(l)..write_char(')')
+    VVec(ty, len) =>
+      logger
+      ..write_string("VVec(")
+      ..write_object(ty)
+      ..write_string(", ")
+      ..write_object(len)
+      ..write_char(')')
+    VNil(ty) => logger..write_string("VNil(")..write_object(ty)..write_char(')')
+    VCons(ty, len, x, xs) =>
+      logger
+      ..write_string("VCons(")
+      ..write_object(ty)
+      ..write_string(", ")
+      ..write_object(len)
+      ..write_string(", ")
+      ..write_object(x)
+      ..write_string(", ")
+      ..write_object(xs)
+      ..write_char(')')
   }
 }
 
@@ -305,4 +406,96 @@ test "example p24:plus" {
   let app = (x, y) => App(x, Inf(y))
   let e_plus_40_2 = e_plus |> app(n_40) |> app(n_2)
   inspect(e_plus_40_2.eval(Env::empty()) |> nat_to_int, content="42")
+}
+
+///|
+test "example p28:append" {
+  let pi = (x, y) => Inf(Pi(x, y))
+  let nat = Inf(Nat)
+  let vec = (ty, len) => Inf(Vec(ty, len))
+
+  // reuse plus (from p24) for types
+  let e_m = Lam(pi(nat, nat)) // _ => (Nat -> Nat)
+  let e_onz = Lam(Inf(Bound(0))) // n => n
+  let e_ons = Lam(Lam(Lam(Inf(Succ(Inf(App(Bound(1), Inf(Bound(0)))))))))
+  let e_plus = Ann(
+    Lam(Inf(NatElim(e_m, e_onz, e_ons, Inf(Bound(0))))),
+    pi(nat, pi(nat, nat)),
+  )
+  let int_to_e_nat = x => {
+    loop (x, Zero) {
+      (0, e) => e
+      (x, e) => continue (x - 1, Succ(Inf(e)))
+    }
+  }
+
+  // Build append using VecElim, but specialize to a = Global("a") for this test
+  let alpha = Inf(Free(Global("a")))
+
+  // motive: \m -> (n : Nat) -> 
+  let e_m = Lam(
+    pi(
+      nat,
+      pi( // Vec alpha n -> Vec alpha (plus m n)
+        vec(alpha, Inf(Bound(0))),
+        Inf(App(App(e_plus, Inf(Bound(1))), Inf(Bound(0)))),
+      ),
+    ),
+  )
+
+  // on nil: \n w -> w
+  let e_onn = Lam(Lam(Inf(Bound(0))))
+
+  // on cons: \m v vs rec n w -> Cons alpha (plus m n) v (rec n w)
+  let e_onc = {
+    let (w, n, rec, _vs, v, m) = (
+      Bound(0),
+      Bound(1),
+      Bound(2),
+      Bound(3),
+      Bound(4),
+      Bound(5),
+    )
+    let ret = Inf(
+      Cons(
+        alpha,
+        Inf(e_plus |> App(Inf(m)) |> App(Inf(n))),
+        Inf(v),
+        Inf(rec |> App(Inf(n)) |> App(Inf(w))),
+      ),
+    )
+    Lam(Lam(Lam(Lam(Lam(Lam(ret))))))
+  }
+
+  // For the concrete example, directly produce the function by fixing the first vector
+  let n_2 = int_to_e_nat(2)
+  let n_1 = int_to_e_nat(1)
+  let n_0 = int_to_e_nat(0)
+
+  // helpers for clearer construction and application
+  let consC = (ty, len, x, xs) => Inf(Cons(ty, len, x, xs))
+  let nilC = ty => Inf(Nil(ty))
+  // appI: second arg is ExpI (we wrap it with Inf), appC: second arg is already ExpC
+  let appI = (x, y) => App(x, Inf(y))
+  let appC = (x, y) => App(x, y)
+
+  // Build vectors (ExpC) using helpers
+  let v_left = consC(
+    alpha,
+    Inf(n_1),
+    Inf(Free(Global("x"))),
+    consC(alpha, Inf(n_0), Inf(Free(Global("x"))), nilC(alpha)),
+  )
+  let v_right = consC(alpha, Inf(n_0), Inf(Free(Global("y"))), nilC(alpha))
+
+  // Use VecElim to get the append-like function for the first vector, then apply n and w via pipeline
+  let append_fn = VecElim(alpha, e_m, e_onn, e_onc, Inf(n_2), v_left)
+  let e_append_app = append_fn |> appI(n_1) |> appC(v_right)
+  let env = Env::empty()
+  inspect(
+    e_append_app.eval(env).quote(0),
+    content=(
+      #|Inf(Cons(Inf(Free(Global("a"))), Inf(Succ(Inf(Succ(Inf(Zero))))), Inf(Free(Global("x"))), Inf(Cons(Inf(Free(Global("a"))), Inf(Succ(Inf(Zero))), Inf(Free(Global("x"))), Inf(Cons(Inf(Free(Global("a"))), Inf(Zero), Inf(Free(Global("y"))), Inf(Nil(Inf(Free(Global("a")))))))))))
+    ),
+  )
 }

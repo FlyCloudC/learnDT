@@ -12,6 +12,10 @@ pub enum ExpI {
   Zero
   Succ(ExpC)
   NatElim(ExpC, ExpC, ExpC, ExpC)
+  Vec(ExpC, ExpC)
+  Nil(ExpC)
+  Cons(ExpC, ExpC, ExpC, ExpC)
+  VecElim(ExpC, ExpC, ExpC, ExpC, ExpC, ExpC)
 } derive(Show, Eq)
 
 ///|
@@ -42,6 +46,9 @@ pub enum Value {
   VNat
   VZero
   VSucc(Value)
+  VVec(Value, Value)
+  VNil(Value)
+  VCons(Value, Value, Value, Value)
 }
 
 ///|
@@ -49,6 +56,7 @@ pub enum Neutral {
   NFree(Name)
   NApp(Neutral, Value)
   NNatElim(Value, Value, Value, Neutral)
+  NVecElim(Value, Value, Value, Value, Value, Neutral)
 } derive(Show)
 
 ///|

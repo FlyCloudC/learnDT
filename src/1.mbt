@@ -37,6 +37,33 @@ pub fn ExpI::eval(self : ExpI, env : Env) -> Value {
 
       rec(e_k.eval(env))
     }
+    Vec(e_ty, e_len) => VVec(e_ty.eval(env), e_len.eval(env))
+    Nil(e_ty) => VNil(e_ty.eval(env))
+    Cons(e_ty, e_len, e_x, e_xs) =>
+      VCons( //
+        e_ty.eval(env),
+        e_len.eval(env),
+        e_x.eval(env),
+        e_xs.eval(env),
+      )
+    VecElim(e_ty, e_m, e_onn, e_onc, e_len, e_xs) => {
+      let onn = e_onn.eval(env)
+      let onc = e_onc.eval(env)
+      fn rec(len, xs) {
+        match xs {
+          VNil(_) => onn
+          VCons(_, len_, x, xs_) =>
+            onc.app(len_).app(x).app(xs_).app(rec(len_, xs_))
+          VNeutral(n_xs) =>
+            VNeutral(
+              NVecElim(e_ty.eval(env), e_m.eval(env), onn, onc, len, n_xs),
+            )
+          _ => panic()
+        }
+      }
+
+      rec(e_len.eval(env), e_xs.eval(env))
+    }
   }
 }
 
