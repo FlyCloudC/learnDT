@@ -122,7 +122,7 @@ fn ExpC::check_type(
   match self {
     Inf(e~) => {
       let ty_infer = e.infer_type(i, ctx)
-      guard ty.quote(0) == ty_infer.quote(0) else { raise MisMatch(self) }
+      guard ty.quote() == ty_infer.quote() else { raise MisMatch(self) }
     }
     Lam(e_ret~) => {
       guard ty is VPi(ty_par~, ty_ret~) else { raise MisMatch(self) }
@@ -208,67 +208,58 @@ fn ExpC::subst(e_old : ExpC, i : Int, e_new : ExpI) -> ExpC {
 
 ///|
 /// 把 Value 反向转回 Term
-fn Value::quote(self : Value, i : Int) -> ExpC {
+fn Value::quote(self : Value, i? : Int = 0) -> ExpC {
   match self {
-    VLam(f~) => Lam(e_ret=f.quote(i))
+    VLam(f~) => Lam(e_ret=f.quote(i~))
     VStar => Inf(e=Star)
     VPi(ty_par~, ty_ret~) =>
-      Inf(e=Pi(e_par_ty=ty_par.quote(i), e_ret_ty=ty_ret.quote(i)))
-    VNeutral(n~) => Inf(e=n.quote(i))
+      Inf(e=Pi(e_par_ty=ty_par.quote(i~), e_ret_ty=ty_ret.quote(i~)))
+    VNeutral(n~) => Inf(e=n.quote(i~))
     VNat => Inf(e=Nat)
     VZero => Inf(e=Zero)
-    VSucc(l~) => Inf(e=Succ(e_l=l.quote(i)))
-    VVec(ty~, len~) => Inf(e=Vec(e_ty=ty.quote(i), e_len=len.quote(i)))
-    VNil(ty~) => Inf(e=Nil(e_ty=ty.quote(i)))
+    VSucc(l~) => Inf(e=Succ(e_l=l.quote(i~)))
+    VVec(ty~, len~) => Inf(e=Vec(e_ty=ty.quote(i~), e_len=len.quote(i~)))
+    VNil(ty~) => Inf(e=Nil(e_ty=ty.quote(i~)))
     VCons(ty~, len~, x~, xs~) =>
       Inf(
         e=Cons(
-          e_ty=ty.quote(i),
-          e_len=len.quote(i),
-          e_x=x.quote(i),
-          e_xs=xs.quote(i),
+          e_ty=ty.quote(i~),
+          e_len=len.quote(i~),
+          e_x=x.quote(i~),
+          e_xs=xs.quote(i~),
         ),
       )
   }
 }
 
 ///|
-fn VFunc::quote(self : VFunc, i : Int) -> ExpC {
-  self(Value::free(Quote(i))).quote(i + 1)
+fn VFunc::quote(self : VFunc, i~ : Int) -> ExpC {
+  self(Value::free(Quote(i))).quote(i=i + 1)
 }
 
 ///|
-pub fn Value::quote0(self : Value) -> ExpC {
-  self.quote(0)
-}
-
-///|
-fn Neutral::quote(self : Neutral, i : Int) -> ExpI {
+fn Neutral::quote(self : Neutral, i~ : Int) -> ExpI {
   match self {
     // Bound 从里往外数
     // Quote 从外往里数
     NFree(name=Quote(k)) => Bound(i=i - k - 1)
     NFree(name~) => Free(name~)
-    NApp(n_fun~, arg~) =>
-      App( //
-        e_fun=n_fun.quote(i),
-        e_arg=arg.quote(i),
-      )
+    NApp(n_fun~, arg~) => App(e_fun=n_fun.quote(i~), e_arg=arg.quote(i~))
     NNatElim(m~, onz~, ons~, n_k~) =>
       NatElim(
-        e_m=m.quote(i),
-        e_onz=onz.quote(i),
-        e_ons=ons.quote(i),
-        e_k=Inf(e=n_k.quote(i)),
+        e_m=m.quote(i~),
+        e_onz=onz.quote(i~),
+        e_ons=ons.quote(i~),
+        e_k=Inf(e=n_k.quote(i~)),
       )
     NVecElim(ty~, m~, onn~, onc~, len~, n_xs~) =>
       VecElim(
-        e_ty=ty.quote(i),
-        e_m=m.quote(i),
-        e_onn=onn.quote(i),
-        e_onc=onc.quote(i),
-        e_len=len.quote(i),
-        e_xs=Inf(e=n_xs.quote(i)),
+        e_ty=ty.quote(i~),
+        e_m=m.quote(i~),
+        e_onn=onn.quote(i~),
+        e_onc=onc.quote(i~),
+        e_len=len.quote(i~),
+        e_xs=Inf(e=n_xs.quote(i~)),
       )
   }
 }
@@ -312,13 +303,13 @@ test "example p12" {
   )
   // -------------------------------------
   debug_inspect(
-    e_1.eval(empty_env).quote(0),
+    e_1.eval(empty_env).quote(),
     content=(
       #|Inf(e=Free(name=Global("y")))
     ),
   )
   debug_inspect(
-    e_2.eval(empty_env).quote(0),
+    e_2.eval(empty_env).quote(),
     content=(
       #|Lam(e_ret=Inf(e=Bound(i=0)))
     ),
@@ -494,7 +485,7 @@ test "example p28:append" {
   let e_append_app = append_fn |> appI(n_1) |> appC(v_right)
   let env = Env::empty()
   debug_inspect(
-    e_append_app.eval(env).quote(0),
+    e_append_app.eval(env).quote(),
     content=(
       #|Inf(
       #|  e=Cons(
