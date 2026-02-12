@@ -48,8 +48,7 @@ fn ExpI::infer_type(
         i,
         ctx,
         VNat //
-        |> VPi(l => m.app(l) //
-          |> VPi(_ => m.app(VSucc(l)))),
+        |> VPi(l => m.app(l) |> VPi(_ => m.app(VSucc(l)))),
       )
       e_k.check_type(i, ctx, VNat)
       let k = e_k.eval(Env::empty())
@@ -276,25 +275,25 @@ pub impl Show for Value with output(self, logger) {
     VStar => logger.write_string("VStar")
     VLam(_) => logger.write_string("VLam(...)")
     VNeutral(n) =>
-      logger..write_string("VNeutral(")..write_object(n)..write_char(')')
+      logger..write_string("VNeutral(")..write_object(n).write_char(')')
     VPi(par_ty, ret_ty) =>
       logger
       ..write_string("VPi(")
       ..write_object(par_ty)
       ..write_string(", _ => ")
       ..write_object(ret_ty(Value::free(Global("_"))))
-      ..write_char(')')
+      .write_char(')')
     VNat => logger.write_string("VNat")
     VZero => logger.write_string("VZero")
-    VSucc(l) => logger..write_string("VSucc(")..write_object(l)..write_char(')')
+    VSucc(l) => logger..write_string("VSucc(")..write_object(l).write_char(')')
     VVec(ty, len) =>
       logger
       ..write_string("VVec(")
       ..write_object(ty)
       ..write_string(", ")
       ..write_object(len)
-      ..write_char(')')
-    VNil(ty) => logger..write_string("VNil(")..write_object(ty)..write_char(')')
+      .write_char(')')
+    VNil(ty) => logger..write_string("VNil(")..write_object(ty).write_char(')')
     VCons(ty, len, x, xs) =>
       logger
       ..write_string("VCons(")
@@ -305,7 +304,7 @@ pub impl Show for Value with output(self, logger) {
       ..write_object(x)
       ..write_string(", ")
       ..write_object(xs)
-      ..write_char(')')
+      .write_char(')')
   }
 }
 
@@ -391,15 +390,19 @@ test "example p24:plus" {
   let ty_plus = e_plus.infer_type(0, Context::empty())
   inspect(ty_plus, content="VPi(VNat, _ => VPi(VNat, _ => VNat))")
   // -------------------------------------
-  let int_to_e_nat = x => loop (x, Zero) {
-    (0, e) => e
-    (x, e) => continue (x - 1, Succ(Inf(e)))
+  let int_to_e_nat = x => {
+    loop (x, Zero) {
+      (0, e) => e
+      (x, e) => continue (x - 1, Succ(Inf(e)))
+    }
   }
-  let nat_to_int = v => loop (v, 0) {
-    (VZero, x) => x.to_string()
-    (VNeutral(n), x) => "\{n} + \{x}"
-    (VSucc(l), x) => continue (l, x + 1)
-    _ => panic()
+  let nat_to_int = v => {
+    loop (v, 0) {
+      (VZero, x) => x.to_string()
+      (VNeutral(n), x) => "\{n} + \{x}"
+      (VSucc(l), x) => continue (l, x + 1)
+      _ => panic()
+    }
   }
   let n_40 = int_to_e_nat(40)
   let n_2 = int_to_e_nat(2)
