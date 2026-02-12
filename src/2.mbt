@@ -6,28 +6,28 @@ fn ExpI::infer_type(
   ctx : Context,
 ) -> Type raise CheckError {
   match self {
-    Ann(e, e_ty) => {
+    Ann(e~, e_ty~) => {
       e_ty.check_type(i, ctx, VStar)
       let ty = e_ty.eval(Env::empty())
       e.check_type(i, ctx, ty)
       ty
     }
     Star => VStar
-    Pi(e_par_ty, e_ret_ty) => {
+    Pi(e_par_ty~, e_ret_ty~) => {
       e_par_ty.check_type(i, ctx, VStar)
       let par_ty = e_par_ty.eval(Env::empty())
       e_ret_ty
-      .subst(0, Free(Local(i)))
+      .subst(0, Free(name=Local(i)))
       .check_type(i + 1, ctx.add((Local(i), par_ty)), VStar)
       VStar
     }
-    Free(name) => {
+    Free(name~) => {
       guard ctx.lookup(name) is Some(ty) else { raise UnknownIdent(name) }
       ty
     }
-    App(e_fun, e_arg) => {
+    App(e_fun~, e_arg~) => {
       let fun_ty = e_fun.infer_type(i, ctx)
-      guard fun_ty is VPi(ty_par, ty_ret) else { raise IllApply }
+      guard fun_ty is VPi(ty_par~, ty_ret~) else { raise IllApply }
       e_arg.check_type(i, ctx, ty_par)
       ty_ret(e_arg.eval(Env::empty()))
     }
@@ -36,72 +36,71 @@ fn ExpI::infer_type(
     // the type checker will never encounter a bound variable.
     Nat => VStar
     Zero => VNat
-    Succ(e_l) => {
+    Succ(e_l~) => {
       e_l.check_type(i, ctx, VNat)
       VNat
     }
-    NatElim(e_m, e_onz, e_ons, e_k) => {
-      e_m.check_type(i, ctx, VPi(VNat, _ => VStar))
+    NatElim(e_m~, e_onz~, e_ons~, e_k~) => {
+      e_m.check_type(i, ctx, VPi(ty_par=VNat, ty_ret=_ => VStar))
       let m = e_m.eval(Env::empty())
       e_onz.check_type(i, ctx, m.app(VZero))
       e_ons.check_type(
         i,
         ctx,
-        VNat //
-        |> VPi(l => m.app(l) |> VPi(_ => m.app(VSucc(l)))),
+        VPi(ty_par=VNat, ty_ret=l => {
+          VPi(ty_par=m.app(l), ty_ret=_ => m.app(VSucc(l~)))
+        }),
       )
       e_k.check_type(i, ctx, VNat)
       let k = e_k.eval(Env::empty())
       m.app(k)
     }
-    Vec(e_ty, e_len) => {
+    Vec(e_ty~, e_len~) => {
       e_ty.check_type(i, ctx, VStar)
       e_len.check_type(i, ctx, VNat)
       VStar
     }
-    Nil(e_ty) => {
+    Nil(e_ty~) => {
       e_ty.check_type(i, ctx, VStar)
-      VVec(e_ty.eval(Env::empty()), VZero)
+      VVec(ty=e_ty.eval(Env::empty()), len=VZero)
     }
-    Cons(e_ty, e_len, e_x, e_xs) => {
+    Cons(e_ty~, e_len~, e_x~, e_xs~) => {
       e_ty.check_type(i, ctx, VStar)
       let ty = e_ty.eval(Env::empty())
       e_len.check_type(i, ctx, VNat)
       let len = e_len.eval(Env::empty())
       e_x.check_type(i, ctx, ty)
-      e_xs.check_type(i, ctx, VVec(ty, len))
-      VVec(ty, VSucc(len))
+      e_xs.check_type(i, ctx, VVec(ty~, len~))
+      VVec(ty~, len=VSucc(l=len))
     }
-    VecElim(e_ty, e_m, e_onn, e_onc, e_len, e_xs) => {
+    VecElim(e_ty~, e_m~, e_onn~, e_onc~, e_len~, e_xs~) => {
       e_ty.check_type(i, ctx, VStar)
       let ty = e_ty.eval(Env::empty())
       e_m.check_type(
         i,
         ctx,
-        VNat |> VPi(len => VVec(ty, len) |> VPi(_ => VStar)),
+        VPi(ty_par=VNat, ty_ret=len => {
+          VPi(ty_par=VVec(ty~, len~), ty_ret=_ => VStar)
+        }),
       )
       let m = e_m.eval(Env::empty())
-      e_onn.check_type(i, ctx, m.app(VZero).app(VNil(ty)))
+      e_onn.check_type(i, ctx, m.app(VZero).app(VNil(ty~)))
       e_onc.check_type(
         i,
         ctx,
-        VNat
-        |> VPi(len => {
-          ty
-          |> VPi(x => {
-            VVec(ty, len)
-            |> VPi(xs => {
-              VPi( //
-                m.app(len).app(xs),
-                _ => m.app(VSucc(len)).app(VCons(ty, len, x, xs)),
-              )
+        VPi(ty_par=VNat, ty_ret=len => {
+          VPi(ty_par=ty, ty_ret=x => {
+            VPi(ty_par=VVec(ty~, len~), ty_ret=xs => {
+              VPi(ty_par=m.app(len).app(xs), ty_ret=_ => {
+                m.app(VSucc(l=len)).app(VCons(ty~, len~, x~, xs~))
+              })
             })
           })
         }),
       )
       e_len.check_type(i, ctx, VNat)
       let len = e_len.eval(Env::empty())
-      e_xs.check_type(i, ctx, VVec(ty, len))
+      e_xs.check_type(i, ctx, VVec(ty~, len~))
       let xs = e_xs.eval(Env::empty())
       m.app(len).app(xs)
     }
@@ -121,15 +120,15 @@ fn ExpC::check_type(
   ty : Type,
 ) -> Unit raise CheckError {
   match self {
-    Inf(e) => {
+    Inf(e~) => {
       let ty_infer = e.infer_type(i, ctx)
       guard ty.quote(0) == ty_infer.quote(0) else { raise MisMatch(self) }
     }
-    Lam(e_ret) => {
-      guard ty is VPi(ty_par, ty_ret) else { raise MisMatch(self) }
+    Lam(e_ret~) => {
+      guard ty is VPi(ty_par~, ty_ret~) else { raise MisMatch(self) }
       let new_ctx = ctx.add((Local(i), ty_par))
       e_ret //
-      .subst(0, Free(Local(i)))
+      .subst(0, Free(name=Local(i)))
       .check_type(i + 1, new_ctx, ty_ret(Value::free(Local(i))))
     }
   }
@@ -151,47 +150,48 @@ pub fn ExpC::check_type0(
 /// 这里的 i 和 check_type 的 i 不一样，subst 的时候是从 i=0 开始的
 fn ExpI::subst(e_old : ExpI, i : Int, e_new : ExpI) -> ExpI {
   match e_old {
-    Ann(e, ty) => Ann(e.subst(i, e_new), ty.subst(i, e_new))
+    Ann(e~, e_ty~) => Ann(e=e.subst(i, e_new), e_ty=e_ty.subst(i, e_new))
     Star => e_old
-    Pi(e_arg_ty, e_ret_ty) =>
+    Pi(e_par_ty~, e_ret_ty~) =>
       Pi( //
-        e_arg_ty.subst(i, e_new),
-        e_ret_ty.subst(i + 1, e_new),
+        e_par_ty=e_par_ty.subst(i, e_new),
+        e_ret_ty=e_ret_ty.subst(i + 1, e_new),
       )
-    Bound(j) => if i == j { e_new } else { e_old }
+    Bound(i=j) => if i == j { e_new } else { e_old }
     Free(_) => e_old
-    App(e_fun, e_arg) =>
+    App(e_fun~, e_arg~) =>
       App( //
-        e_fun.subst(i, e_new),
-        e_arg.subst(i, e_new),
+        e_fun=e_fun.subst(i, e_new),
+        e_arg=e_arg.subst(i, e_new),
       )
     Nat => e_old
     Zero => e_old
-    Succ(e_l) => Succ(e_l.subst(i, e_new))
-    NatElim(e_m, e_onz, e_ons, e_k) =>
+    Succ(e_l~) => Succ(e_l=e_l.subst(i, e_new))
+    NatElim(e_m~, e_onz~, e_ons~, e_k~) =>
       NatElim(
-        e_m.subst(i, e_new),
-        e_onz.subst(i, e_new),
-        e_ons.subst(i, e_new),
-        e_k.subst(i, e_new),
+        e_m=e_m.subst(i, e_new),
+        e_onz=e_onz.subst(i, e_new),
+        e_ons=e_ons.subst(i, e_new),
+        e_k=e_k.subst(i, e_new),
       )
-    Vec(e_ty, e_len) => Vec(e_ty.subst(i, e_new), e_len.subst(i, e_new))
-    Nil(e_ty) => Nil(e_ty.subst(i, e_new))
-    Cons(e_ty, e_len, e_x, e_xs) =>
+    Vec(e_ty~, e_len~) =>
+      Vec(e_ty=e_ty.subst(i, e_new), e_len=e_len.subst(i, e_new))
+    Nil(e_ty~) => Nil(e_ty=e_ty.subst(i, e_new))
+    Cons(e_ty~, e_len~, e_x~, e_xs~) =>
       Cons(
-        e_ty.subst(i, e_new),
-        e_len.subst(i, e_new),
-        e_x.subst(i, e_new),
-        e_xs.subst(i, e_new),
+        e_ty=e_ty.subst(i, e_new),
+        e_len=e_len.subst(i, e_new),
+        e_x=e_x.subst(i, e_new),
+        e_xs=e_xs.subst(i, e_new),
       )
-    VecElim(e_ty, e_m, e_onn, e_onc, e_len, e_xs) =>
+    VecElim(e_ty~, e_m~, e_onn~, e_onc~, e_len~, e_xs~) =>
       VecElim(
-        e_ty.subst(i, e_new),
-        e_m.subst(i, e_new),
-        e_onn.subst(i, e_new),
-        e_onc.subst(i, e_new),
-        e_len.subst(i, e_new),
-        e_xs.subst(i, e_new),
+        e_ty=e_ty.subst(i, e_new),
+        e_m=e_m.subst(i, e_new),
+        e_onn=e_onn.subst(i, e_new),
+        e_onc=e_onc.subst(i, e_new),
+        e_len=e_len.subst(i, e_new),
+        e_xs=e_xs.subst(i, e_new),
       )
   }
 }
@@ -199,8 +199,8 @@ fn ExpI::subst(e_old : ExpI, i : Int, e_new : ExpI) -> ExpI {
 ///|
 fn ExpC::subst(e_old : ExpC, i : Int, e_new : ExpI) -> ExpC {
   match e_old {
-    Inf(e) => Inf(e.subst(i, e_new))
-    Lam(e) => Lam(e.subst(i + 1, e_new))
+    Inf(e~) => Inf(e=e.subst(i, e_new))
+    Lam(e_ret=e) => Lam(e_ret=e.subst(i + 1, e_new))
   }
 }
 
@@ -210,28 +210,34 @@ fn ExpC::subst(e_old : ExpC, i : Int, e_new : ExpI) -> ExpC {
 /// 把 Value 反向转回 Term
 fn Value::quote(self : Value, i : Int) -> ExpC {
   match self {
-    VLam(f) =>
+    VLam(f~) =>
       Lam(
-        f(Value::free(Quote(i))) //
+        e_ret=f(Value::free(Quote(i))) //
         .quote(i + 1),
       )
-    VStar => Inf(Star)
-    VPi(v, f) =>
+    VStar => Inf(e=Star)
+    VPi(ty_par~, ty_ret~) =>
       Inf(
-        Pi(
-          v.quote(i),
-          f(Value::free(Quote(i))) //
-          .quote(i + 1),
+        e=Pi(
+          e_par_ty=ty_par.quote(i),
+          e_ret_ty=ty_ret(Value::free(Quote(i))).quote(i + 1),
         ),
       )
-    VNeutral(n) => Inf(n.quote(i))
-    VNat => Inf(Nat)
-    VZero => Inf(Zero)
-    VSucc(l) => Inf(Succ(l.quote(i)))
-    VVec(ty, len) => Inf(Vec(ty.quote(i), len.quote(i)))
-    VNil(ty) => Inf(Nil(ty.quote(i)))
-    VCons(ty, len, x, xs) =>
-      Inf(Cons(ty.quote(i), len.quote(i), x.quote(i), xs.quote(i)))
+    VNeutral(n~) => Inf(e=n.quote(i))
+    VNat => Inf(e=Nat)
+    VZero => Inf(e=Zero)
+    VSucc(l~) => Inf(e=Succ(e_l=l.quote(i)))
+    VVec(ty~, len~) => Inf(e=Vec(e_ty=ty.quote(i), e_len=len.quote(i)))
+    VNil(ty~) => Inf(e=Nil(e_ty=ty.quote(i)))
+    VCons(ty~, len~, x~, xs~) =>
+      Inf(
+        e=Cons(
+          e_ty=ty.quote(i),
+          e_len=len.quote(i),
+          e_x=x.quote(i),
+          e_xs=xs.quote(i),
+        ),
+      )
   }
 }
 
@@ -245,24 +251,28 @@ fn Neutral::quote(self : Neutral, i : Int) -> ExpI {
   match self {
     // Bound 从里往外数
     // Quote 从外往里数
-    NFree(Quote(k)) => Bound(i - k - 1)
-    NFree(name) => Free(name)
-    NApp(n_fun, arg) => App(n_fun.quote(i), arg.quote(i))
-    NNatElim(m, onz, ons, n_k) =>
-      NatElim( //
-        m.quote(i),
-        onz.quote(i),
-        ons.quote(i),
-        Inf(n_k.quote(i)),
+    NFree(name=Quote(k)) => Bound(i=i - k - 1)
+    NFree(name~) => Free(name~)
+    NApp(n_fun~, arg~) =>
+      App( //
+        e_fun=n_fun.quote(i),
+        e_arg=arg.quote(i),
       )
-    NVecElim(ty, m, onn, onc, len, n_xs) =>
+    NNatElim(m~, onz~, ons~, n_k~) =>
+      NatElim(
+        e_m=m.quote(i),
+        e_onz=onz.quote(i),
+        e_ons=ons.quote(i),
+        e_k=Inf(e=n_k.quote(i)),
+      )
+    NVecElim(ty~, m~, onn~, onc~, len~, n_xs~) =>
       VecElim(
-        ty.quote(i),
-        m.quote(i),
-        onn.quote(i),
-        onc.quote(i),
-        len.quote(i),
-        Inf(n_xs.quote(i)),
+        e_ty=ty.quote(i),
+        e_m=m.quote(i),
+        e_onn=onn.quote(i),
+        e_onc=onc.quote(i),
+        e_len=len.quote(i),
+        e_xs=Inf(e=n_xs.quote(i)),
       )
   }
 }
@@ -274,27 +284,27 @@ pub impl Show for Value with output(self, logger) {
   match self {
     VStar => logger.write_string("VStar")
     VLam(_) => logger.write_string("VLam(...)")
-    VNeutral(n) =>
+    VNeutral(n~) =>
       logger..write_string("VNeutral(")..write_object(n).write_char(')')
-    VPi(par_ty, ret_ty) =>
+    VPi(ty_par~, ty_ret~) =>
       logger
       ..write_string("VPi(")
-      ..write_object(par_ty)
+      ..write_object(ty_par)
       ..write_string(", _ => ")
-      ..write_object(ret_ty(Value::free(Global("_"))))
+      ..write_object(ty_ret(Value::free(Global("_"))))
       .write_char(')')
     VNat => logger.write_string("VNat")
     VZero => logger.write_string("VZero")
-    VSucc(l) => logger..write_string("VSucc(")..write_object(l).write_char(')')
-    VVec(ty, len) =>
+    VSucc(l~) => logger..write_string("VSucc(")..write_object(l).write_char(')')
+    VVec(ty~, len~) =>
       logger
       ..write_string("VVec(")
       ..write_object(ty)
       ..write_string(", ")
       ..write_object(len)
       .write_char(')')
-    VNil(ty) => logger..write_string("VNil(")..write_object(ty).write_char(')')
-    VCons(ty, len, x, xs) =>
+    VNil(ty~) => logger..write_string("VNil(")..write_object(ty).write_char(')')
+    VCons(ty~, len~, x~, xs~) =>
       logger
       ..write_string("VCons(")
       ..write_object(ty)
@@ -310,26 +320,25 @@ pub impl Show for Value with output(self, logger) {
 
 ///|
 test "example p12" {
-  let e_id = Lam(Inf(Bound(0)))
-  let e_cst = Lam(Lam(Inf(Bound(1))))
-  let e_free = name => Inf(Free(Global(name)))
+  let e_id = Lam(e_ret=Inf(e=Bound(i=0)))
+  let e_cst = Lam(e_ret=Lam(e_ret=Inf(e=Bound(i=1))))
+  let e_free = name => Inf(e=Free(name=Global(name)))
   // -------------------------------------
-  let e_ty_a = Inf(Free(Global("a")))
-  let e_ty_b = Inf(Free(Global("b")))
+  let e_ty_a = e_free("a")
+  let e_ty_b = e_free("b")
+  let app = (e_fun, e_arg) => App(e_fun~, e_arg~)
   // -------------------------------------
-  let fun = (x, y) => Inf(Pi(x, y))
-  let e_1 = e_id //
-    |> Ann(fun(e_ty_a, e_ty_a))
-    |> App(e_free("y"))
-  let e_2 = e_cst
-    |> Ann(
-      fun( //
+  let fun = (e_par_ty, e_ret_ty) => Inf(e=Pi(e_par_ty~, e_ret_ty~))
+  let e_1 = app(Ann(e=e_id, e_ty=fun(e_ty_a, e_ty_a)), e_free("y"))
+  let e_2 = Ann(
+      e=e_cst,
+      e_ty=fun( //
         fun(e_ty_b, e_ty_b),
         fun(e_ty_a, fun(e_ty_b, e_ty_b)),
       ),
     )
-    |> App(e_id)
-    |> App(e_free("y"))
+    |> app(e_id)
+    |> app(e_free("y"))
   // -------------------------------------
   let empty_env : Env = Env::empty()
   let env_1 = Env::from_array([
@@ -343,48 +352,49 @@ test "example p12" {
   inspect(
     e_1.eval(empty_env).quote(0),
     content=(
-      #|Inf(Free(Global("y")))
+      #|Inf(e=Free(name=Global("y")))
     ),
   )
   inspect(
     e_2.eval(empty_env).quote(0),
     content=(
-      #|Lam(Inf(Bound(0)))
+      #|Lam(Inf(e=Bound(i=0)))
     ),
   )
   inspect(
     e_1.infer_type(0, env_1),
     content=(
-      #|VNeutral(NFree(Global("a")))
+      #|VNeutral(NFree(name=Global("a")))
     ),
   )
   inspect(
     e_2.infer_type(0, env_2),
     content=(
-      #|VPi(VNeutral(NFree(Global("b"))), _ => VNeutral(NFree(Global("b"))))
+      #|VPi(VNeutral(NFree(name=Global("b"))), _ => VNeutral(NFree(name=Global("b"))))
     ),
   )
 }
 
 ///|
 test "example p24:plus" {
-  let pi = (x, y) => Inf(Pi(x, y))
-  let nat = Inf(Nat)
+  let pi = (e_par_ty, e_ret_ty) => Inf(e=Pi(e_par_ty~, e_ret_ty~))
+  let nat = Inf(e=Nat)
+  let app = (x, y) => App(e_fun=x, e_arg=Inf(e=y))
   // -------------------------------------
-  let e_m = Lam(pi(nat, nat)) // _ => (Nat -> Nat)
-  let e_onz = Lam(Inf(Bound(0))) // n => n
+  let e_m = Lam(e_ret=pi(nat, nat)) // _ => (Nat -> Nat)
+  let e_onz = Lam(e_ret=Inf(e=Bound(i=0))) // n => n
   let e_ons = Lam( // k =>
-    Lam( // rec =>
-      Lam( // n =>
-        Inf( // Succ(rec(n))
-          Succ(Inf(App(Bound(1), Inf(Bound(0))))),
+    e_ret=Lam( // rec =>
+      e_ret=Lam( // n =>
+        e_ret=Inf( // Succ(rec(n))
+          e=app(Bound(i=1), Bound(i=0)),
         ),
       ),
     ),
   )
   let e_plus = Ann(
-    Lam(Inf(NatElim(e_m, e_onz, e_ons, Inf(Bound(0))))),
-    pi(nat, pi(nat, nat)),
+    e=Lam(e_ret=Inf(e=NatElim(e_m~, e_onz~, e_ons~, e_k=Inf(e=Bound(i=0))))),
+    e_ty=pi(nat, pi(nat, nat)),
   )
   // -------------------------------------
   let ty_plus = e_plus.infer_type(0, Context::empty())
@@ -393,81 +403,89 @@ test "example p24:plus" {
   let int_to_e_nat = x => {
     loop (x, Zero) {
       (0, e) => e
-      (x, e) => continue (x - 1, Succ(Inf(e)))
+      (x, e) => continue (x - 1, Succ(e_l=Inf(e~)))
     }
   }
   let nat_to_int = v => {
     loop (v, 0) {
       (VZero, x) => x.to_string()
-      (VNeutral(n), x) => "\{n} + \{x}"
-      (VSucc(l), x) => continue (l, x + 1)
+      (VNeutral(n~), x) => "\{n} + \{x}"
+      (VSucc(l~), x) => continue (l, x + 1)
       _ => panic()
     }
   }
   let n_40 = int_to_e_nat(40)
   let n_2 = int_to_e_nat(2)
-  let app = (x, y) => App(x, Inf(y))
+  let app = (x, y) => App(e_fun=x, e_arg=Inf(e=y))
   let e_plus_40_2 = e_plus |> app(n_40) |> app(n_2)
   inspect(e_plus_40_2.eval(Env::empty()) |> nat_to_int, content="42")
 }
 
 ///|
 test "example p28:append" {
-  let pi = (x, y) => Inf(Pi(x, y))
-  let nat = Inf(Nat)
-  let vec = (ty, len) => Inf(Vec(ty, len))
+  let pi = (x, y) => Inf(e=Pi(e_par_ty=x, e_ret_ty=y))
+  let nat = Inf(e=Nat)
+  let e_free = name => Inf(e=Free(name=Global(name)))
+  let vec = (ty, len) => Inf(e=Vec(e_ty=ty, e_len=len))
+  // appI: second arg is ExpI (we wrap it with Inf), appC: second arg is already ExpC
+  let appI = (x, y) => App(e_fun=x, e_arg=Inf(e=y))
+  let appC = (x, y) => App(e_fun=x, e_arg=y)
 
   // reuse plus (from p24) for types
-  let e_m = Lam(pi(nat, nat)) // _ => (Nat -> Nat)
-  let e_onz = Lam(Inf(Bound(0))) // n => n
-  let e_ons = Lam(Lam(Lam(Inf(Succ(Inf(App(Bound(1), Inf(Bound(0)))))))))
+  let e_m = Lam(e_ret=pi(nat, nat)) // _ => (Nat -> Nat)
+  let e_onz = Lam(e_ret=Inf(e=Bound(i=0))) // n => n
+  let e_ons = Lam(
+    e_ret=Lam(
+      e_ret=Lam(e_ret=Inf(e=Succ(e_l=Inf(e=appI(Bound(i=1), Bound(i=0)))))),
+    ),
+  )
   let e_plus = Ann(
-    Lam(Inf(NatElim(e_m, e_onz, e_ons, Inf(Bound(0))))),
-    pi(nat, pi(nat, nat)),
+    e=Lam(e_ret=Inf(e=NatElim(e_m~, e_onz~, e_ons~, e_k=Inf(e=Bound(i=0))))),
+    e_ty=pi(nat, pi(nat, nat)),
   )
   let int_to_e_nat = x => {
     loop (x, Zero) {
       (0, e) => e
-      (x, e) => continue (x - 1, Succ(Inf(e)))
+      (x, e) => continue (x - 1, Succ(e_l=Inf(e~)))
     }
   }
 
   // Build append using VecElim, but specialize to a = Global("a") for this test
-  let alpha = Inf(Free(Global("a")))
+  let alpha = e_free("a")
 
   // motive: \m -> (n : Nat) -> 
   let e_m = Lam(
-    pi(
+    e_ret=pi(
       nat,
       pi( // Vec alpha n -> Vec alpha (plus m n)
-        vec(alpha, Inf(Bound(0))),
-        Inf(App(App(e_plus, Inf(Bound(1))), Inf(Bound(0)))),
+        vec(alpha, Inf(e=Bound(i=0))),
+        Inf(e=appI(appI(e_plus, Bound(i=1)), Bound(i=0))),
       ),
     ),
   )
 
   // on nil: \n w -> w
-  let e_onn = Lam(Lam(Inf(Bound(0))))
+  let e_onn = Lam(e_ret=Lam(e_ret=Inf(e=Bound(i=0))))
 
   // on cons: \m v vs rec n w -> Cons alpha (plus m n) v (rec n w)
   let e_onc = {
     let (w, n, rec, _vs, v, m) = (
-      Bound(0),
-      Bound(1),
-      Bound(2),
-      Bound(3),
-      Bound(4),
-      Bound(5),
+      Bound(i=0),
+      Bound(i=1),
+      Bound(i=2),
+      Bound(i=3),
+      Bound(i=4),
+      Bound(i=5),
     )
     let ret = Inf(
-      Cons(
-        alpha,
-        Inf(e_plus |> App(Inf(m)) |> App(Inf(n))),
-        Inf(v),
-        Inf(rec |> App(Inf(n)) |> App(Inf(w))),
+      e=Cons(
+        e_ty=alpha,
+        e_len=Inf(e=e_plus |> appI(m) |> appI(n)),
+        e_x=Inf(e=v),
+        e_xs=Inf(e=rec |> appI(n) |> appI(w)),
       ),
     )
-    Lam(Lam(Lam(Lam(Lam(Lam(ret))))))
+    Lam(e_ret=Lam(e_ret=Lam(e_ret=Lam(e_ret=Lam(e_ret=Lam(e_ret=ret))))))
   }
 
   // For the concrete example, directly produce the function by fixing the first vector
@@ -476,29 +494,35 @@ test "example p28:append" {
   let n_0 = int_to_e_nat(0)
 
   // helpers for clearer construction and application
-  let consC = (ty, len, x, xs) => Inf(Cons(ty, len, x, xs))
-  let nilC = ty => Inf(Nil(ty))
-  // appI: second arg is ExpI (we wrap it with Inf), appC: second arg is already ExpC
-  let appI = (x, y) => App(x, Inf(y))
-  let appC = (x, y) => App(x, y)
+  let consC = (ty, len, x, xs) => {
+    Inf(e=Cons(e_ty=ty, e_len=len, e_x=x, e_xs=xs))
+  }
+  let nilC = ty => Inf(e=Nil(e_ty=ty))
 
   // Build vectors (ExpC) using helpers
   let v_left = consC(
     alpha,
-    Inf(n_1),
-    Inf(Free(Global("x"))),
-    consC(alpha, Inf(n_0), Inf(Free(Global("x"))), nilC(alpha)),
+    Inf(e=n_1),
+    e_free("x"),
+    consC(alpha, Inf(e=n_0), e_free("x"), nilC(alpha)),
   )
-  let v_right = consC(alpha, Inf(n_0), Inf(Free(Global("y"))), nilC(alpha))
+  let v_right = consC(alpha, Inf(e=n_0), e_free("y"), nilC(alpha))
 
   // Use VecElim to get the append-like function for the first vector, then apply n and w via pipeline
-  let append_fn = VecElim(alpha, e_m, e_onn, e_onc, Inf(n_2), v_left)
+  let append_fn = VecElim(
+    e_ty=alpha,
+    e_m~,
+    e_onn~,
+    e_onc~,
+    e_len=Inf(e=n_2),
+    e_xs=v_left,
+  )
   let e_append_app = append_fn |> appI(n_1) |> appC(v_right)
   let env = Env::empty()
   inspect(
     e_append_app.eval(env).quote(0),
     content=(
-      #|Inf(Cons(Inf(Free(Global("a"))), Inf(Succ(Inf(Succ(Inf(Zero))))), Inf(Free(Global("x"))), Inf(Cons(Inf(Free(Global("a"))), Inf(Succ(Inf(Zero))), Inf(Free(Global("x"))), Inf(Cons(Inf(Free(Global("a"))), Inf(Zero), Inf(Free(Global("y"))), Inf(Nil(Inf(Free(Global("a")))))))))))
+      #|Inf(e=Cons(Inf(e=Free(name=Global("a"))), Inf(e=Succ(e_l=Inf(e=Succ(e_l=Inf(e=Zero))))), Inf(e=Free(name=Global("x"))), Inf(e=Cons(Inf(e=Free(name=Global("a"))), Inf(e=Succ(e_l=Inf(e=Zero))), Inf(e=Free(name=Global("x"))), Inf(e=Cons(Inf(e=Free(name=Global("a"))), Inf(e=Zero), Inf(e=Free(name=Global("y"))), Inf(e=Nil(Inf(e=Free(name=Global("a")))))))))))
     ),
   )
 }

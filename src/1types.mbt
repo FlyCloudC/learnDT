@@ -1,28 +1,35 @@
 ///|
 /// Term ↑
 pub enum ExpI {
-  Ann(ExpC, ExpC)
+  Ann(e~ : ExpC, e_ty~ : ExpC)
   Star
-  Pi(ExpC, ExpC)
+  Pi(e_par_ty~ : ExpC, e_ret_ty~ : ExpC)
   /// 从里往外的第 i 个变量
-  Bound(Int)
-  Free(Name)
-  App(ExpI, ExpC)
+  Bound(i~ : Int)
+  Free(name~ : Name)
+  App(e_fun~ : ExpI, e_arg~ : ExpC)
   Nat
   Zero
-  Succ(ExpC)
-  NatElim(ExpC, ExpC, ExpC, ExpC)
-  Vec(ExpC, ExpC)
-  Nil(ExpC)
-  Cons(ExpC, ExpC, ExpC, ExpC)
-  VecElim(ExpC, ExpC, ExpC, ExpC, ExpC, ExpC)
+  Succ(e_l~ : ExpC)
+  NatElim(e_m~ : ExpC, e_onz~ : ExpC, e_ons~ : ExpC, e_k~ : ExpC)
+  Vec(e_ty~ : ExpC, e_len~ : ExpC)
+  Nil(e_ty~ : ExpC)
+  Cons(e_ty~ : ExpC, e_len~ : ExpC, e_x~ : ExpC, e_xs~ : ExpC)
+  VecElim(
+    e_ty~ : ExpC,
+    e_m~ : ExpC,
+    e_onn~ : ExpC,
+    e_onc~ : ExpC,
+    e_len~ : ExpC,
+    e_xs~ : ExpC
+  )
 } derive(Show, Eq)
 
 ///|
 /// Term ↓
 pub enum ExpC {
-  Inf(ExpI)
-  Lam(ExpC)
+  Inf(e~ : ExpI)
+  Lam(e_ret~ : ExpC)
 } derive(Show, Eq)
 
 ///|
@@ -39,24 +46,31 @@ type Type = Value
 
 ///|
 pub enum Value {
-  VLam((Value) -> Value)
+  VLam(f~ : (Value) -> Value)
   VStar
-  VPi(Value, (Value) -> Value)
-  VNeutral(Neutral)
+  VPi(ty_par~ : Value, ty_ret~ : (Value) -> Value)
+  VNeutral(n~ : Neutral)
   VNat
   VZero
-  VSucc(Value)
-  VVec(Value, Value)
-  VNil(Value)
-  VCons(Value, Value, Value, Value)
+  VSucc(l~ : Value)
+  VVec(ty~ : Value, len~ : Value)
+  VNil(ty~ : Value)
+  VCons(ty~ : Value, len~ : Value, x~ : Value, xs~ : Value)
 }
 
 ///|
 pub enum Neutral {
-  NFree(Name)
-  NApp(Neutral, Value)
-  NNatElim(Value, Value, Value, Neutral)
-  NVecElim(Value, Value, Value, Value, Value, Neutral)
+  NFree(name~ : Name)
+  NApp(n_fun~ : Neutral, arg~ : Value)
+  NNatElim(m~ : Value, onz~ : Value, ons~ : Value, n_k~ : Neutral)
+  NVecElim(
+    ty~ : Value,
+    m~ : Value,
+    onn~ : Value,
+    onc~ : Value,
+    len~ : Value,
+    n_xs~ : Neutral
+  )
 } derive(Show)
 
 ///|
