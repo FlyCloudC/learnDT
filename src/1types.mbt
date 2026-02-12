@@ -23,14 +23,14 @@ pub enum ExpI {
     e_len~ : ExpC,
     e_xs~ : ExpC
   )
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 /// Term ↓
 pub enum ExpC {
   Inf(e~ : ExpI)
   Lam(e_ret~ : ExpC)
-} derive(Show, Eq)
+} derive(Debug, Eq)
 
 ///|
 pub enum Name {
@@ -39,16 +39,19 @@ pub enum Name {
   Local(Int)
   /// quote 函数内部使用的临时名字
   Quote(Int)
-} derive(Eq, Show)
+} derive(Debug, Eq)
 
 ///|
 type Type = Value
 
 ///|
+struct VFunc((Value) -> Value)
+
+///|
 pub enum Value {
-  VLam(f~ : (Value) -> Value)
+  VLam(f~ : VFunc)
   VStar
-  VPi(ty_par~ : Value, ty_ret~ : (Value) -> Value)
+  VPi(ty_par~ : Value, ty_ret~ : VFunc)
   VNeutral(n~ : Neutral)
   VNat
   VZero
@@ -56,7 +59,7 @@ pub enum Value {
   VVec(ty~ : Value, len~ : Value)
   VNil(ty~ : Value)
   VCons(ty~ : Value, len~ : Value, x~ : Value, xs~ : Value)
-}
+} derive(Debug)
 
 ///|
 pub enum Neutral {
@@ -71,7 +74,7 @@ pub enum Neutral {
     len~ : Value,
     n_xs~ : Neutral
   )
-} derive(Show)
+} derive(Debug)
 
 ///|
 using @list {type List}

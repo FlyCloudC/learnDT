@@ -210,19 +210,10 @@ fn ExpC::subst(e_old : ExpC, i : Int, e_new : ExpI) -> ExpC {
 /// 把 Value 反向转回 Term
 fn Value::quote(self : Value, i : Int) -> ExpC {
   match self {
-    VLam(f~) =>
-      Lam(
-        e_ret=f(Value::free(Quote(i))) //
-        .quote(i + 1),
-      )
+    VLam(f~) => Lam(e_ret=f.quote(i))
     VStar => Inf(e=Star)
     VPi(ty_par~, ty_ret~) =>
-      Inf(
-        e=Pi(
-          e_par_ty=ty_par.quote(i),
-          e_ret_ty=ty_ret(Value::free(Quote(i))).quote(i + 1),
-        ),
-      )
+      Inf(e=Pi(e_par_ty=ty_par.quote(i), e_ret_ty=ty_ret.quote(i)))
     VNeutral(n~) => Inf(e=n.quote(i))
     VNat => Inf(e=Nat)
     VZero => Inf(e=Zero)
@@ -239,6 +230,11 @@ fn Value::quote(self : Value, i : Int) -> ExpC {
         ),
       )
   }
+}
+
+///|
+fn VFunc::quote(self : VFunc, i : Int) -> ExpC {
+  self(Value::free(Quote(i))).quote(i + 1)
 }
 
 ///|
@@ -280,42 +276,8 @@ fn Neutral::quote(self : Neutral, i : Int) -> ExpI {
 // --------------------------------------------------------------------
 
 ///|
-pub impl Show for Value with output(self, logger) {
-  match self {
-    VStar => logger.write_string("VStar")
-    VLam(_) => logger.write_string("VLam(...)")
-    VNeutral(n~) =>
-      logger..write_string("VNeutral(")..write_object(n).write_char(')')
-    VPi(ty_par~, ty_ret~) =>
-      logger
-      ..write_string("VPi(")
-      ..write_object(ty_par)
-      ..write_string(", _ => ")
-      ..write_object(ty_ret(Value::free(Global("_"))))
-      .write_char(')')
-    VNat => logger.write_string("VNat")
-    VZero => logger.write_string("VZero")
-    VSucc(l~) => logger..write_string("VSucc(")..write_object(l).write_char(')')
-    VVec(ty~, len~) =>
-      logger
-      ..write_string("VVec(")
-      ..write_object(ty)
-      ..write_string(", ")
-      ..write_object(len)
-      .write_char(')')
-    VNil(ty~) => logger..write_string("VNil(")..write_object(ty).write_char(')')
-    VCons(ty~, len~, x~, xs~) =>
-      logger
-      ..write_string("VCons(")
-      ..write_object(ty)
-      ..write_string(", ")
-      ..write_object(len)
-      ..write_string(", ")
-      ..write_object(x)
-      ..write_string(", ")
-      ..write_object(xs)
-      .write_char(')')
-  }
+pub impl Debug for VFunc with to_repr(self) {
+  self(Value::free(Global("_"))).to_repr()
 }
 
 ///|
@@ -349,28 +311,31 @@ test "example p12" {
     (Global("b"), VStar),
   )
   // -------------------------------------
-  inspect(
+  debug_inspect(
     e_1.eval(empty_env).quote(0),
     content=(
       #|Inf(e=Free(name=Global("y")))
     ),
   )
-  inspect(
+  debug_inspect(
     e_2.eval(empty_env).quote(0),
     content=(
-      #|Lam(Inf(e=Bound(i=0)))
+      #|Lam(e_ret=Inf(e=Bound(i=0)))
     ),
   )
-  inspect(
+  debug_inspect(
     e_1.infer_type(0, env_1),
     content=(
-      #|VNeutral(NFree(name=Global("a")))
+      #|VNeutral(n=NFree(name=Global("a")))
     ),
   )
-  inspect(
+  debug_inspect(
     e_2.infer_type(0, env_2),
     content=(
-      #|VPi(VNeutral(NFree(name=Global("b"))), _ => VNeutral(NFree(name=Global("b"))))
+      #|VPi(
+      #|  ty_par=VNeutral(n=NFree(name=Global("b"))),
+      #|  ty_ret=VNeutral(n=NFree(name=Global("b"))),
+      #|)
     ),
   )
 }
@@ -398,7 +363,12 @@ test "example p24:plus" {
   )
   // -------------------------------------
   let ty_plus = e_plus.infer_type(0, Context::empty())
-  inspect(ty_plus, content="VPi(VNat, _ => VPi(VNat, _ => VNat))")
+  debug_inspect(
+    ty_plus,
+    content=(
+      #|VPi(ty_par=VNat, ty_ret=VPi(ty_par=VNat, ty_ret=VNat))
+    ),
+  )
   // -------------------------------------
   let int_to_e_nat = x => {
     loop (x, Zero) {
@@ -409,7 +379,6 @@ test "example p24:plus" {
   let nat_to_int = v => {
     loop (v, 0) {
       (VZero, x) => x.to_string()
-      (VNeutral(n~), x) => "\{n} + \{x}"
       (VSucc(l~), x) => continue (l, x + 1)
       _ => panic()
     }
@@ -418,7 +387,12 @@ test "example p24:plus" {
   let n_2 = int_to_e_nat(2)
   let app = (x, y) => App(e_fun=x, e_arg=Inf(e=y))
   let e_plus_40_2 = e_plus |> app(n_40) |> app(n_2)
-  inspect(e_plus_40_2.eval(Env::empty()) |> nat_to_int, content="42")
+  debug_inspect(
+    e_plus_40_2.eval(Env::empty()) |> nat_to_int,
+    content=(
+      #|"2"
+    ),
+  )
 }
 
 ///|
@@ -519,10 +493,31 @@ test "example p28:append" {
   )
   let e_append_app = append_fn |> appI(n_1) |> appC(v_right)
   let env = Env::empty()
-  inspect(
+  debug_inspect(
     e_append_app.eval(env).quote(0),
     content=(
-      #|Inf(e=Cons(Inf(e=Free(name=Global("a"))), Inf(e=Succ(e_l=Inf(e=Succ(e_l=Inf(e=Zero))))), Inf(e=Free(name=Global("x"))), Inf(e=Cons(Inf(e=Free(name=Global("a"))), Inf(e=Succ(e_l=Inf(e=Zero))), Inf(e=Free(name=Global("x"))), Inf(e=Cons(Inf(e=Free(name=Global("a"))), Inf(e=Zero), Inf(e=Free(name=Global("y"))), Inf(e=Nil(Inf(e=Free(name=Global("a")))))))))))
+      #|Inf(
+      #|  e=Cons(
+      #|    e_ty=Inf(e=Free(name=Global("a"))),
+      #|    e_len=Inf(e=Succ(e_l=Inf(e=Succ(e_l=Inf(e=Zero))))),
+      #|    e_x=Inf(e=Free(name=Global("x"))),
+      #|    e_xs=Inf(
+      #|      e=Cons(
+      #|        e_ty=Inf(e=Free(name=Global("a"))),
+      #|        e_len=Inf(e=Succ(e_l=Inf(e=Zero))),
+      #|        e_x=Inf(e=Free(name=Global("x"))),
+      #|        e_xs=Inf(
+      #|          e=Cons(
+      #|            e_ty=Inf(e=Free(name=Global("a"))),
+      #|            e_len=Inf(e=Zero),
+      #|            e_x=Inf(e=Free(name=Global("y"))),
+      #|            e_xs=Inf(e=Nil(e_ty=Inf(e=Free(name=Global("a"))))),
+      #|          ),
+      #|        ),
+      #|      ),
+      #|    ),
+      #|  ),
+      #|)
     ),
   )
 }
